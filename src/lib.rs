@@ -1,4 +1,4 @@
-use bitflags::{bitflags, Flags};
+use bitflags::bitflags;
 use std::fmt::Debug;
 use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -287,6 +287,7 @@ impl QueryQuestion {
 	}
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct QueryAnswer {
 	name: String,
