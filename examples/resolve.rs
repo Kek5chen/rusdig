@@ -1,6 +1,6 @@
 use std::net::UdpSocket;
 use rand::Rng;
-use rusdig::{Query, RecordType};
+use rusdig::{AuthoritativeNameserverAnswer, Query, RecordType};
 
 fn main() {
 	let query = Query::for_name("にゃ.shop", RecordType::A);
@@ -20,6 +20,11 @@ fn main() {
 
 	let query = Query::from_bytes(&buf).unwrap();
 
+	for (i, question) in query.resource_queries.iter().enumerate() {
+		println!("Question #{} of Type '{}':", i, question.ty_str());
+		println!("  - For Name: {}", question.name());
+	}
+
 	for (i, answer) in query.resource_answers.iter().enumerate() {
 		println!("Answer #{}:", i);
 		match answer.entry_type() {
@@ -33,5 +38,12 @@ fn main() {
 				println!("  - Data: {}", answer.data_as_text().unwrap());
 			}
 		}
+	}
+
+	for (i, authoritative) in query.resource_authorities.iter().enumerate() {
+		println!("Authority #{}: ", i);
+		println!("  - For Name: {}", authoritative.name());
+		println!("  - Primary Name Server: {}", authoritative.primary_ns());
+		println!("  - Responsible Authority Mailbox: {}", authoritative.responsible_mail());
 	}
 }

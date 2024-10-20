@@ -1,6 +1,7 @@
 use bitflags::bitflags;
 use std::fmt::Debug;
 use std::mem;
+use std::mem::transmute;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::string::FromUtf8Error;
 use rand::random;
@@ -72,6 +73,7 @@ pub struct Query {
 	pub num_additional_rr: u16,
 	pub resource_answers: Vec<QueryAnswer>,
 	pub resource_queries: Vec<QueryQuestion>,
+	pub resource_authorities: Vec<AuthoritativeNameserverAnswer>,
 }
 
 impl Query {
@@ -91,6 +93,7 @@ impl Query {
 					class_code: CLASS_INET,
 				}
 			],
+			resource_authorities: vec![],
 		}
 	}
 	pub fn as_bytes(&self) -> Result<Vec<u8>, DNSParseError> {
@@ -134,6 +137,12 @@ impl Query {
 			answers.push(answer);
 		}
 
+		let mut authoritys = Vec::new();
+		for _ in 0..authority_rrs {
+			let authority = AuthoritativeNameserverAnswer::from_bytes(all_bytes, &mut bytes)?;
+			authoritys.push(authority);
+		}
+
 		Ok(Query {
 			transaction_id: transaction,
 			flags: QueryFlags::from_bits_retain(flags),
@@ -143,6 +152,7 @@ impl Query {
 			num_additional_rr: additional_rrs,
 			resource_answers: answers,
 			resource_queries: questions,
+			resource_authorities: authoritys,
 		})
 	}
 }
@@ -162,6 +172,18 @@ pub enum RecordType {
 impl RecordType {
 	pub fn id(&self) -> u16 {
 		*self as u16
+	}
+
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			RecordType::A => "A",
+			RecordType::AAAA => "AAAA",
+			RecordType::CNAME => "CNAME",
+			RecordType::SRV => "SRV",
+			RecordType::NS => "NS",
+			RecordType::MX => "MX",
+			RecordType::TXT => "TXT",
+		}
 	}
 }
 
@@ -183,9 +205,11 @@ fn encode_name(name: &str) -> Result<Vec<u8>, DNSParseError> {
 	Ok(bytes)
 }
 
-fn decode_name_internal(all_bytes: &[u8], bytes: &mut &[u8], was_compressed: bool) -> Result<String, DNSParseError> {
+const MAX_COMPRESSION_LAYER: u32 = 5;
+
+fn decode_name_internal(all_bytes: &[u8], bytes: &mut &[u8], compression_layer: u32) -> Result<String, DNSParseError> {
 	let mut iter = bytes.iter().peekable();
-	let mut name;
+	let mut name = String::new();
 
 	let mut len = *iter.next().ok_or(DNSParseError::InvalidName)?;
 	if len == 0 {
@@ -193,23 +217,22 @@ fn decode_name_internal(all_bytes: &[u8], bytes: &mut &[u8], was_compressed: boo
 		return Ok(".".to_string())
 	}
 
-	// compressed domain name
-	if len == 0xC0 {
-		if was_compressed {
-			return Err(DNSParseError::MultiCompressRecursionPass)
-		}
-		let offset = *iter.next().ok_or(DNSParseError::InvalidName)? as usize;
-		name = decode_name_internal(all_bytes, &mut all_bytes.get(offset..)
-			.ok_or(DNSParseError::InvalidName)?, true)
-			.or(Err(DNSParseError::InvalidName))?;
-		*bytes = &bytes[2..];
-		return Ok(name);
-	}
-
-	name = String::new();
-
 	while iter.peek().is_some() {
+		// compressed domain name
+		if len == 0xC0 {
+			if compression_layer > MAX_COMPRESSION_LAYER {
+				return Err(DNSParseError::MultiCompressRecursionPass)
+			}
+			let offset = *iter.next().ok_or(DNSParseError::InvalidName)? as usize;
+			name.push_str(&decode_name_internal(all_bytes, &mut all_bytes.get(offset..)
+				.ok_or(DNSParseError::InvalidName)?, compression_layer + 1)
+				.or(Err(DNSParseError::InvalidName))?);
+			*bytes = &bytes[2..];
+			return Ok(name);
+		}
+
 		if len == 0 {
+			*bytes = &bytes[1..];
 			break;
 		}
 
@@ -222,16 +245,15 @@ fn decode_name_internal(all_bytes: &[u8], bytes: &mut &[u8], was_compressed: boo
 
 		name.push('.');
 
+		*bytes = &bytes[len as usize + 1..];
 		len = *iter.next().ok_or(DNSParseError::InvalidName)?;
 	}
-
-	*bytes = &bytes[name.len() + 1..];
 
 	Ok(name)
 }
 
 fn decode_name(all_bytes: &[u8], bytes: &mut &[u8]) -> Result<String, DNSParseError> {
-	decode_name_internal(all_bytes, bytes, false)
+	decode_name_internal(all_bytes, bytes, 0)
 }
 
 #[test]
@@ -284,6 +306,14 @@ impl QueryQuestion {
 			ty,
 			class_code: class,
 		})
+	}
+
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	pub fn ty_str(&self) -> &'static str {
+		unsafe { transmute::<_, RecordType>(self.ty).as_str() }
 	}
 }
 
@@ -350,6 +380,67 @@ impl QueryAnswer {
 
 	pub fn data_as_text_lossy(&self) -> Result<String, DNSParseError> {
 		Ok(String::from_utf8_lossy(self.data.as_slice()).to_string())
+	}
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct AuthoritativeNameserverAnswer {
+	name: String,
+	ty: u16,
+	class: u16,
+	time_to_live: u32,
+	data_length: u16,
+	primary_nameserver: String,
+	responsible_authority_mailbox: String,
+	serial_number: u32,
+	refresh_interval: u32,
+	retry_interval: u32,
+	expire_limit: u32,
+	minimum_ttl: u32,
+}
+
+impl AuthoritativeNameserverAnswer {
+	pub fn from_bytes(all_bytes: &[u8], bytes: &mut &[u8]) -> Result<AuthoritativeNameserverAnswer, DNSParseError> {
+		let name = decode_name(all_bytes, bytes)?;
+		let ty = read_u16(bytes)?;
+		let class = read_u16(bytes)?;
+		let time_to_live = read_u32(bytes)?;
+		let data_length = read_u16(bytes)?;
+		let primary_nameserver = decode_name(all_bytes, bytes)?;
+		let responsible_authority_mailbox = decode_name(all_bytes, bytes)?;
+		let serial_number = read_u32(bytes)?;
+		let refresh_interval = read_u32(bytes)?;
+		let retry_interval = read_u32(bytes)?;
+		let expire_limit = read_u32(bytes)?;
+		let minimum_ttl = read_u32(bytes)?;
+
+		Ok(AuthoritativeNameserverAnswer {
+			name,
+			ty,
+			class,
+			time_to_live,
+			data_length,
+			primary_nameserver,
+			responsible_authority_mailbox,
+			serial_number,
+			refresh_interval,
+			retry_interval,
+			expire_limit,
+			minimum_ttl,
+		})
+	}
+
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	pub fn primary_ns(&self) -> &str {
+		&self.primary_nameserver
+	}
+
+	pub fn responsible_mail(&self) -> &str {
+		&self.responsible_authority_mailbox
 	}
 }
 
