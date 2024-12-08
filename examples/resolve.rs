@@ -1,9 +1,9 @@
 use std::net::UdpSocket;
 use rand::Rng;
-use rusdig::{AuthoritativeNameserverAnswer, Query, RecordType};
+use rusdig::{Query, RecordType};
 
 fn main() {
-	let query = Query::for_name("にゃ.shop", RecordType::A);
+	let query = Query::for_name("google.de", RecordType::A);
 	let bytes = query.as_bytes().unwrap();
 
 	let socket = UdpSocket::bind(format!("0.0.0.0:{}", rand::thread_rng().gen_range(1001..64000))).unwrap();
@@ -21,17 +21,19 @@ fn main() {
 	let query = Query::from_bytes(&buf).unwrap();
 
 	for (i, question) in query.resource_queries.iter().enumerate() {
-		println!("Question #{} of Type '{}':", i, question.ty_str());
+		println!("Question #{} of Type '{}':", i, question.ty_str().unwrap_or("NOT IMPLEMENTED"));
 		println!("  - For Name: {}", question.name());
 	}
 
 	for (i, answer) in query.resource_answers.iter().enumerate() {
 		println!("Answer #{}:", i);
-		match answer.entry_type() {
-			RecordType::A | RecordType::NS => {
+		let entry_ty = answer.entry_type();
+
+		match entry_ty {
+			Some(RecordType::A | RecordType::NS) => {
 				println!("  - IPv4: {}", answer.data_as_ipv4().unwrap());
 			}
-			RecordType::AAAA => {
+			Some(RecordType::AAAA) => {
 				println!("  - IPv6: {}", answer.data_as_ipv6().unwrap());
 			}
 			_ => {

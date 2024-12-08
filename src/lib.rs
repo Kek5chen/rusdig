@@ -1,7 +1,5 @@
 use bitflags::bitflags;
 use std::fmt::Debug;
-use std::mem;
-use std::mem::transmute;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::string::FromUtf8Error;
 use rand::random;
@@ -174,6 +172,19 @@ impl RecordType {
 		*self as u16
 	}
 
+	fn from_u16(ty: u16) -> Option<RecordType> {
+		Some(match ty {
+			1 => RecordType::A,
+			28 => RecordType::AAAA,
+			5 => RecordType::CNAME,
+			33 => RecordType::SRV,
+			2 => RecordType::NS,
+			15 => RecordType::MX,
+			16 => RecordType::TXT,
+			_ => return None,
+		})
+	}
+
 	pub fn as_str(&self) -> &'static str {
 		match self {
 			RecordType::A => "A",
@@ -312,8 +323,8 @@ impl QueryQuestion {
 		&self.name
 	}
 
-	pub fn ty_str(&self) -> &'static str {
-		unsafe { transmute::<_, RecordType>(self.ty).as_str() }
+	pub fn ty_str(&self) -> Option<&'static str> {
+		RecordType::from_u16(self.ty).map(|rec| rec.as_str())
 	}
 }
 
@@ -347,10 +358,8 @@ impl QueryAnswer {
 		})
 	}
 
-	pub fn entry_type(&self) -> RecordType {
-		unsafe {
-			mem::transmute(self.ty)
-		}
+	pub fn entry_type(&self) -> Option<RecordType> {
+		RecordType::from_u16(self.ty)
 	}
 
 	pub fn data_as_ipv6(&self) -> Result<Ipv6Addr, DNSParseError> {
