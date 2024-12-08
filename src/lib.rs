@@ -277,7 +277,7 @@ fn test_en_decode() {
 	assert_eq!(encoded, vec![4, 109, 101, 111, 119, 3, 99, 111, 109, 0]);
 
 	let mew = "meow.com.";
-	let mut encoded = encode_name(mew).unwrap();
+	let encoded = encode_name(mew).unwrap();
 	let decoded = decode_name(&encoded, &mut encoded.as_slice()).unwrap();
 	assert_eq!(decoded, mew);
 }
