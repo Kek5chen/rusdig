@@ -27,7 +27,7 @@ fn read_u32(bytes: &mut &[u8]) -> Result<u32, DNSParseError> {
 
 
 bitflags! {
-	#[derive(Debug)]
+	#[derive(Debug, Copy, Clone)]
 	pub struct QueryFlags: u16 {
 		// Indicates if the message is a query (0) or a reply (1)
 		const qr     = 0b1000000000000000;
@@ -57,7 +57,8 @@ impl Default for QueryFlags {
 
 impl QueryFlags {
 	pub fn successful(&self) -> bool {
-		self.bits() == 0x8180
+		(*self & QueryFlags::rcode).is_empty() &&
+			self.contains(QueryFlags::qr)
 	}
 }
 
