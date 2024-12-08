@@ -1,9 +1,9 @@
 [package]
 name = "rusdig"
-description = "DNS, the Rust way."
+description = "Lightweight DNS message parsing and encoding library written in Rust"
 license = "MIT"
 repository = "https://github.com/Kek5chen/rusdig"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 
 
