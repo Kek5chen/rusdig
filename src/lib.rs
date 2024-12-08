@@ -13,7 +13,7 @@ fn read_u16(bytes: &mut &[u8]) -> Result<u16, DNSParseError> {
 	let val = u16::from_be_bytes(bytes.get(0..2)
 		.ok_or(DNSParseError::InvalidData)?
 		.try_into()
-		.or(Err(DNSParseError::InvalidData))?);
+		.map_err(|_| DNSParseError::InvalidData)?);
 	*bytes = &bytes[2..];
 	Ok(val)
 }
@@ -22,7 +22,7 @@ fn read_u32(bytes: &mut &[u8]) -> Result<u32, DNSParseError> {
 	let val = u32::from_be_bytes(bytes.get(0..4)
 		.ok_or(DNSParseError::InvalidData)?
 		.try_into()
-		.or(Err(DNSParseError::InvalidData))?);
+		.map_err(|_| DNSParseError::InvalidData)?);
 	*bytes = &bytes[4..];
 	Ok(val)
 }
@@ -118,12 +118,12 @@ impl Query {
 	pub fn from_bytes(mut bytes: &[u8]) -> Result<Query, DNSParseError> {
 		let all_bytes = bytes;
 
-		let transaction = read_u16(&mut bytes).or(Err(DNSParseError::InvalidQuery))?;
-		let flags = read_u16(&mut bytes).or(Err(DNSParseError::InvalidQuery))?;
-		let num_questions = read_u16(&mut bytes).or(Err(DNSParseError::InvalidQuery))?;
-		let answer_rrs = read_u16(&mut bytes).or(Err(DNSParseError::InvalidQuery))?;
-		let authority_rrs= read_u16(&mut bytes).or(Err(DNSParseError::InvalidQuery))?;
-		let additional_rrs= read_u16(&mut bytes).or(Err(DNSParseError::InvalidQuery))?;
+		let transaction = read_u16(&mut bytes).map_err(|_| DNSParseError::InvalidQuery)?;
+		let flags = read_u16(&mut bytes).map_err(|_| DNSParseError::InvalidQuery)?;
+		let num_questions = read_u16(&mut bytes).map_err(|_| DNSParseError::InvalidQuery)?;
+		let answer_rrs = read_u16(&mut bytes).map_err(|_| DNSParseError::InvalidQuery)?;
+		let authority_rrs= read_u16(&mut bytes).map_err(|_| DNSParseError::InvalidQuery)?;
+		let additional_rrs= read_u16(&mut bytes).map_err(|_| DNSParseError::InvalidQuery)?;
 
 		let mut questions = Vec::new();
 		for _ in 0..num_questions {
@@ -226,7 +226,7 @@ fn decode_name_internal(all_bytes: &[u8], bytes: &mut &[u8], compression_layer: 
 			let offset = *iter.next().ok_or(DNSParseError::InvalidName)? as usize;
 			name.push_str(&decode_name_internal(all_bytes, &mut all_bytes.get(offset..)
 				.ok_or(DNSParseError::InvalidName)?, compression_layer + 1)
-				.or(Err(DNSParseError::InvalidName))?);
+				.map_err(|_| DNSParseError::InvalidName)?);
 			*bytes = &bytes[2..];
 			return Ok(name);
 		}
@@ -297,9 +297,9 @@ impl QueryQuestion {
 	}
 
 	pub fn from_bytes(bytes: &mut &[u8]) -> Result<QueryQuestion, DNSParseError> {
-		let name = decode_name(*bytes, bytes).or(Err(DNSParseError::InvalidName))?;
-		let ty = read_u16(bytes).or(Err(DNSParseError::InvalidType))?;
-		let class = read_u16(bytes).or(Err(DNSParseError::InvalidClass))?;
+		let name = decode_name(*bytes, bytes).map_err(|_| DNSParseError::InvalidName)?;
+		let ty = read_u16(bytes).map_err(|_| DNSParseError::InvalidType)?;
+		let class = read_u16(bytes).map_err(|_| DNSParseError::InvalidClass)?;
 
 		Ok(QueryQuestion {
 			name,
@@ -331,10 +331,10 @@ impl QueryAnswer {
 	pub fn from_bytes(all_bytes: &[u8], bytes: &mut &[u8]) -> Result<Self, DNSParseError> {
 		let name = decode_name(all_bytes, bytes)?;
 
-		let ty = read_u16(bytes).or(Err(DNSParseError::InvalidType))?;
-		let class = read_u16(bytes).or(Err(DNSParseError::InvalidClass))?;
-		let time_to_live = read_u32(bytes).or(Err(DNSParseError::InvalidTTL))?;
-		let data_length = read_u16(bytes).or(Err(DNSParseError::InvalidData))?;
+		let ty = read_u16(bytes).map_err(|_| DNSParseError::InvalidType)?;
+		let class = read_u16(bytes).map_err(|_| DNSParseError::InvalidClass)?;
+		let time_to_live = read_u32(bytes).map_err(|_| DNSParseError::InvalidTTL)?;
+		let data_length = read_u16(bytes).map_err(|_| DNSParseError::InvalidData)?;
 		let data = bytes.get(0..data_length as usize).ok_or(DNSParseError::InvalidData)?.to_vec();
 		*bytes = &bytes[data_length as usize..];
 
@@ -375,7 +375,7 @@ impl QueryAnswer {
 
 	pub fn data_as_text(&self) -> Result<String, DNSParseError> {
 		String::from_utf8(self.data.clone())
-			.or(Err(DNSParseError::InvalidData))
+			.map_err(|_| DNSParseError::InvalidData)
 	}
 
 	pub fn data_as_text_lossy(&self) -> Result<String, DNSParseError> {
