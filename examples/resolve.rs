@@ -1,12 +1,11 @@
 use std::net::UdpSocket;
-use rand::Rng;
 use rusdig::{Query, RecordType};
 
 fn main() {
 	let query = Query::for_name("google.de", RecordType::A);
 	let bytes = query.as_bytes().unwrap();
 
-	let socket = UdpSocket::bind(format!("0.0.0.0:{}", rand::thread_rng().gen_range(1001..64000))).unwrap();
+	let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
 	socket.connect("1.1.1.1:53").unwrap();
 	socket.send(&bytes).unwrap();
 
