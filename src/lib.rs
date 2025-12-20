@@ -378,19 +378,20 @@ impl QueryAnswer {
     }
 
     pub fn data_as_ipv6(&self) -> Result<Ipv6Addr, DNSParseError> {
-        if self.data.len() < 8 * 2 {
+        const IPV6_OCTETS: usize = 16;
+
+        if self.data.len() != IPV6_OCTETS {
             return Err(DNSParseError::InvalidData);
         }
 
-        let mut ipv6_octets: [u8; 16] = [0; 16];
-
-        ipv6_octets.copy_from_slice(&self.data[0..16]);
-
-        Ok(Ipv6Addr::from(ipv6_octets))
+        let ipv6_data: [u8; IPV6_OCTETS] = self.data.as_slice().try_into().unwrap();
+        Ok(Ipv6Addr::from(ipv6_data))
     }
 
     pub fn data_as_ipv4(&self) -> Result<Ipv4Addr, DNSParseError> {
-        if self.data.len() < 4 {
+        const IPV4_OCTETS: usize = 4;
+
+        if self.data.len() != IPV4_OCTETS {
             return Err(DNSParseError::InvalidData);
         }
 
